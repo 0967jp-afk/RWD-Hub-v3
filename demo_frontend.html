@@ -1,0 +1,845 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+  <title>RWD-Hub v3 — Демо</title>
+  <!-- Tailwind CSS через CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Plotly.js через CDN -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #F8FAFC;
+      color: #0B1E36;
+      margin: 0;
+    }
+    h1, h2, h3 { font-family: 'Georgia', serif; }
+    .brand-primary { color: #00838F; }
+    .brand-bg { background: linear-gradient(135deg, #0B1E36 0%, #00838F 100%); }
+    .sidebar-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      font-size: 14px;
+    }
+    .sidebar-item:hover { background: #F1F5F9; }
+    .sidebar-item.active {
+      background: #E0F7FA;
+      border-left-color: #00838F;
+      color: #00838F;
+      font-weight: 600;
+    }
+    .metric-card {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #00838F;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .metric-value { font-size: 24px; font-weight: 700; color: #0B1E36; }
+    .metric-label { font-size: 11px; color: #506070; text-transform: uppercase; letter-spacing: 0.5px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th { background: #1F4E79; color: white; padding: 8px; text-align: left; font-weight: 600; }
+    td { padding: 6px 8px; border-bottom: 1px solid #E2E8F0; }
+    tr:nth-child(even) { background: #F8FAFC; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .tag-red { background: #FEE2E2; color: #991B1B; }
+    .tag-yellow { background: #FEF3C7; color: #92400E; }
+    .tag-green { background: #D1FAE5; color: #065F46; }
+    select, input[type=range] {
+      padding: 6px 10px;
+      border: 1px solid #CBD5E1;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body>
+
+<div class="flex min-h-screen">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-white shadow-lg flex flex-col">
+    <div class="p-4 brand-bg text-white">
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">💊</span>
+        <div>
+          <div class="text-lg font-bold">RWD-Hub v3</div>
+          <div class="text-xs opacity-80">Демо</div>
+        </div>
+      </div>
+    </div>
+
+    <nav class="flex-1 py-2">
+      <div class="sidebar-item active" data-page="map">🗺️ Карта регионов</div>
+      <div class="sidebar-item" data-page="forecast">📈 Прогноз потребности</div>
+      <div class="sidebar-item" data-page="tcoc">⚖️ Схемы лечения (TCoC)</div>
+      <div class="sidebar-item" data-page="audit">🔍 Аудит диспропорций</div>
+      <div class="sidebar-item" data-page="models">🤖 ML-модели</div>
+      <div class="sidebar-item" data-page="calibration">📊 Калибровка</div>
+    </nav>
+
+    <!-- Filters -->
+    <div class="border-t p-4 bg-gray-50">
+      <div class="text-xs uppercase text-gray-500 mb-2">Фильтры</div>
+      <label class="block text-xs text-gray-600 mb-1">Регион</label>
+      <select id="region-select" class="w-full mb-2"></select>
+      <label class="block text-xs text-gray-600 mb-1">Профиль</label>
+      <select id="profile-select" class="w-full mb-2"></select>
+      <label class="block text-xs text-gray-600 mb-1">Препарат (МНН)</label>
+      <select id="drug-select" class="w-full mb-2"></select>
+      <label class="block text-xs text-gray-600 mb-1">Период: <span id="period-value">6</span> мес.</label>
+      <input type="range" id="period-slider" min="3" max="12" value="6" class="w-full">
+    </div>
+
+    <div class="border-t p-3 text-xs text-gray-500">
+      <div>Версия: v3-demo</div>
+      <div>Датасет: 12 960 набл.</div>
+      <div>4 ML-модели</div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 p-6 overflow-auto">
+
+    <!-- Page: Map -->
+    <div id="page-map" class="page active">
+      <h1 class="text-2xl mb-1">Карта регионов</h1>
+      <p class="text-gray-600 mb-4">Распределение рисков по регионам РФ. Зелёный — норма, жёлтый — риск, красный — аномалия.</p>
+
+      <div class="grid grid-cols-4 gap-3 mb-4" id="map-stats"></div>
+      <div id="map-plot" style="height: 500px;"></div>
+
+      <h2 class="text-lg mt-6 mb-2">Топ-15 регионов по P(дефицит)</h2>
+      <div id="map-table"></div>
+    </div>
+
+    <!-- Page: Forecast -->
+    <div id="page-forecast" class="page">
+      <h1 class="text-2xl mb-1">Прогноз потребности</h1>
+      <p class="text-gray-600 mb-4" id="forecast-title">P(дефицит) по выбранному препарату × региону</p>
+
+      <div class="bg-white p-4 rounded shadow mb-4">
+        <label class="block text-sm mb-2">Сценарий «Что если»: рост заболеваемости <span id="growth-value">0</span>%</label>
+        <input type="range" id="growth-slider" min="-10" max="30" step="5" value="0" class="w-full">
+      </div>
+
+      <div id="forecast-plot" style="height: 450px;"></div>
+
+      <h2 class="text-lg mt-6 mb-2">Метрики качества модели</h2>
+      <div class="grid grid-cols-5 gap-3 mb-4" id="forecast-metrics"></div>
+
+      <h2 class="text-lg mb-2">Помесячный прогноз</h2>
+      <div id="forecast-table"></div>
+    </div>
+
+    <!-- Page: TCoC -->
+    <div id="page-tcoc" class="page">
+      <h1 class="text-2xl mb-1">Total Cost of Care</h1>
+      <p class="text-gray-600 mb-4">Сравнение схем лечения по полной стоимости на 1 пациента за 6 мес.</p>
+      <div id="tcoc-plot" style="height: 450px;"></div>
+      <div id="tcoc-table" class="mt-4"></div>
+      <div id="tcoc-conclusion" class="mt-4"></div>
+    </div>
+
+    <!-- Page: Audit -->
+    <div id="page-audit" class="page">
+      <h1 class="text-2xl mb-1">Аудит диспропорций</h1>
+      <p class="text-gray-600 mb-4">Список клиник с флагами аномалий и причинами. Предаудит перед плановыми проверками.</p>
+      <div class="grid grid-cols-4 gap-3 mb-4" id="audit-stats"></div>
+      <div id="audit-table"></div>
+      <div class="mt-4 flex gap-3">
+        <button onclick="exportExcel()" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">📊 Экспорт в Excel</button>
+        <button onclick="exportCSV()" class="bg-emerald-600 text-white px-4 py-2 rounded hover:bg-emerald-700">📄 Экспорт в CSV</button>
+      </div>
+    </div>
+
+    <!-- Page: Models -->
+    <div id="page-models" class="page">
+      <h1 class="text-2xl mb-1">ML-модели — статус и метрики</h1>
+      <p class="text-gray-600 mb-4">4 типа моделей: Logistic, Poisson, Negative Binomial, Cox Proportional Hazards.</p>
+      <div class="grid grid-cols-4 gap-3 mb-6" id="models-cards"></div>
+
+      <h2 class="text-lg mb-2">Полные метрики</h2>
+      <div id="models-metrics-table" class="mb-6"></div>
+
+      <h2 class="text-lg mb-2">Cox PH — топ-5 факторов риска</h2>
+      <div id="models-cox-table"></div>
+      <div class="mt-3 p-3 bg-blue-50 rounded text-sm">
+        ℹ️ Все 5 факторов значимы при α=0.001 (строже, чем α=0.005 в ТЗ).
+      </div>
+    </div>
+
+    <!-- Page: Calibration -->
+    <div id="page-calibration" class="page">
+      <h1 class="text-2xl mb-1">Калибровка и байесовское обновление</h1>
+      <p class="text-gray-600 mb-4">Reliability diagram + Bayesian Sequential Update.</p>
+
+      <h2 class="text-lg mb-2">Sequential Bayesian Update</h2>
+      <p class="text-sm text-gray-700 mb-3 font-mono bg-gray-100 p-2 rounded">
+        P(дефицит | сигналы) = LR × prior / [(LR × prior) + (1 − prior)]
+      </p>
+      <div id="calibration-bayesian-table" class="mb-4"></div>
+      <div id="calibration-bayesian-plot" style="height: 400px;"></div>
+
+      <h2 class="text-lg mt-6 mb-2">Reliability Diagram (калибровочная кривая)</h2>
+      <p class="text-sm text-gray-700 mb-3">Mean calibration error = 0.015 — отлично (порог ТЗ ≤ 0.03)</p>
+      <div id="calibration-reliability-plot" style="height: 400px;"></div>
+
+      <h2 class="text-lg mt-6 mb-2">Probability of Exceedance — P(y > k)</h2>
+      <div id="calibration-exceed-table"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ============================================================
+// MOCK DATA — данные модели v3 (демо)
+// ============================================================
+const MODEL_METRICS = {
+  roc_auc: 0.888,
+  pr_auc: 0.610,
+  brier: 0.178,
+  log_loss: 0.30,
+  poisson_deviance: 1.496,
+  poisson_mae: 0.720,
+  cox_c_index: 0.674,
+  calibration_error: 0.015,
+  bayesian_delta: 0.46, // +46%
+};
+
+const DRUGS = [
+  { id: "sulpirid",    mnn: "сульпирид",      tn: "Эглонил®",   profile: "неврология",      icd: "F32", price: 850 },
+  { id: "amisulprid",  mnn: "амисульприд",    tn: "Солиан®",    profile: "неврология",      icd: "F20", price: 1200 },
+  { id: "periciazin",  mnn: "перициазин",     tn: "Неулептил®", profile: "неврология",      icd: "F60", price: 350 },
+  { id: "tiaprid",     mnn: "тиаприд",        tn: "Тиапридал",  profile: "неврология",      icd: "F95", price: 280 },
+  { id: "apixaban",    mnn: "апиксабан",      tn: "Эликвис®",   profile: "кардиология",     icd: "I48", price: 1450 },
+  { id: "rivaroxaban", mnn: "ривароксабан",   tn: "Ксарелто®",  profile: "кардиология",     icd: "I48", price: 2200 },
+  { id: "dabigatran",  mnn: "дабигатран",     tn: "Прадакса®",  profile: "кардиология",     icd: "I48", price: 1800 },
+  { id: "trastuzumab", mnn: "трастузумаб",    tn: "Герцептин®", profile: "онкология",       icd: "C50", price: 28000 },
+  { id: "rituximab",   mnn: "ритуксимаб",     tn: "Мабтера®",   profile: "онкология",       icd: "C82", price: 19000 },
+  { id: "bevacizumab", mnn: "бевацизумаб",    tn: "Авастин®",   profile: "онкология",       icd: "C18", price: 24000 },
+  { id: "insulin_glarg", mnn: "инсулин гларгин", tn: "Лантус®", profile: "эндокринология",  icd: "E11", price: 1100 },
+  { id: "paracetamol", mnn: "парацетамол",    tn: "Панадол®",   profile: "инфекции",        icd: "J00", price: 90 },
+];
+
+const REGIONS_COORDS = [
+  { region: "Москва", lat: 55.75, lon: 37.61, fo: "ЦФО" },
+  { region: "Санкт-Петербург", lat: 59.94, lon: 30.31, fo: "СЗФО" },
+  { region: "Краснодарский край", lat: 45.04, lon: 38.98, fo: "ЮФО" },
+  { region: "Республика Татарстан", lat: 55.79, lon: 49.12, fo: "ПФО" },
+  { region: "Свердловская область", lat: 56.84, lon: 60.61, fo: "УрФО" },
+  { region: "Республика Башкортостан", lat: 54.74, lon: 55.97, fo: "ПФО" },
+  { region: "Ростовская область", lat: 47.23, lon: 39.71, fo: "ЮФО" },
+  { region: "Челябинская область", lat: 55.16, lon: 61.40, fo: "УрФО" },
+  { region: "Нижегородская область", lat: 56.32, lon: 44.00, fo: "ПФО" },
+  { region: "Самарская область", lat: 53.20, lon: 50.15, fo: "ПФО" },
+  { region: "Республика Саха (Якутия)", lat: 62.03, lon: 129.73, fo: "ДФО" },
+  { region: "Волгоградская область", lat: 48.71, lon: 44.51, fo: "ЮФО" },
+  { region: "Пермский край", lat: 58.01, lon: 56.25, fo: "ПФО" },
+  { region: "Кемеровская область - Кузбасс", lat: 55.36, lon: 86.09, fo: "СФО" },
+  { region: "Красноярский край", lat: 56.01, lon: 92.85, fo: "СФО" },
+  { region: "Иркутская область", lat: 52.28, lon: 104.28, fo: "СФО" },
+  { region: "Новосибирская область", lat: 55.03, lon: 82.92, fo: "СФО" },
+  { region: "Тюменская область", lat: 57.15, lon: 65.53, fo: "УрФО" },
+  { region: "Воронежская область", lat: 51.66, lon: 39.20, fo: "ЦФО" },
+  { region: "Ставропольский край", lat: 45.04, lon: 41.97, fo: "СКФО" },
+  { region: "Республика Дагестан", lat: 42.98, lon: 47.50, fo: "СКФО" },
+  { region: "Белгородская область", lat: 50.60, lon: 36.59, fo: "ЦФО" },
+  { region: "Брянская область", lat: 53.24, lon: 34.42, fo: "ЦФО" },
+  { region: "Владимирская область", lat: 56.13, lon: 40.41, fo: "ЦФО" },
+  { region: "Ивановская область", lat: 57.00, lon: 40.97, fo: "ЦФО" },
+  { region: "Астраханская область", lat: 46.35, lon: 48.04, fo: "ЮФО" },
+  { region: "Псковская область", lat: 57.82, lon: 28.33, fo: "СЗФО" },
+  { region: "Орловская область", lat: 52.97, lon: 36.07, fo: "ЦФО" },
+  { region: "Республика Северная Осетия-Алания", lat: 43.02, lon: 44.68, fo: "СКФО" },
+  { region: "Камчатский край", lat: 53.02, lon: 158.65, fo: "ДФО" },
+  { region: "Республика Адыгея", lat: 44.61, lon: 40.10, fo: "ЮФО" },
+  { region: "Мурманская область", lat: 68.97, lon: 33.08, fo: "СЗФО" },
+  { region: "Саратовская область", lat: 51.53, lon: 46.03, fo: "ПФО" },
+  { region: "Сахалинская область", lat: 46.95, lon: 142.74, fo: "ДФО" },
+  { region: "Забайкальский край", lat: 52.03, lon: 113.50, fo: "ДФО" },
+  { region: "Республика Тыва", lat: 51.72, lon: 94.45, fo: "СФО" },
+];
+
+// Seeded random для воспроизводимости
+let seed = 42;
+function rand() {
+  seed = (seed * 9301 + 49297) % 233280;
+  return seed / 233280;
+}
+function randUniform(min, max) { return min + rand() * (max - min); }
+function randNormal(mean, std) {
+  const u = 1 - rand(), v = rand();
+  return mean + std * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Генерация панели регион × препарат × месяц
+function buildPanel() {
+  const rows = [];
+  REGIONS_COORDS.forEach(r => {
+    const baseRisk = randUniform(0.15, 0.65);
+    const x1 = randUniform(15, 65);
+    const x2 = randUniform(0.4, 0.85);
+    const x3 = randUniform(0.05, 0.30);
+    const x4 = randUniform(0.02, 0.15);
+
+    DRUGS.forEach(drug => {
+      for (let month = 1; month <= 12; month++) {
+        const season = month <= 2 || month === 12 ? "winter" :
+                       month <= 5 ? "spring" :
+                       month <= 8 ? "summer" : "autumn";
+        const suppliers = ["Protek", "Katren", "Pulse", "Прямой контракт"];
+        const supplier = suppliers[Math.floor(rand() * 4)];
+        const incidence = 20 + (season === "winter" ? 5 : 0) + Math.floor(rand() * 10);
+
+        // P(дефицит) из mock формулы
+        let p = baseRisk * (drug.price > 5000 ? 1.5 : 0.7) * (season === "winter" ? 1.2 : 1.0);
+        p = Math.max(0, Math.min(1, p));
+
+        // E[событий]
+        const eEvents = p * 1.5;
+        // HR
+        const hr = 1 + (drug.price / 10000) + (x1 / 100);
+        // Posterior
+        const posterior = Math.min(1, p * 1.46);
+        // P(y > k) через Poisson CDF
+        const lambda = eEvents;
+        const pExceed1 = 1 - (Math.exp(-lambda) * (1 + lambda));
+        const pExceed2 = 1 - (Math.exp(-lambda) * (1 + lambda + lambda*lambda/2));
+        const pExceed3 = 1 - (Math.exp(-lambda) * (1 + lambda + lambda*lambda/2 + lambda*lambda*lambda/6));
+
+        const status = p > 0.5 ? "Красный (аномалия)" : p > 0.2 ? "Жёлтый (риск)" : "Зелёный (норма)";
+        const ksg = randNormal(0, 15) + (p - 0.3) * 30;
+
+        rows.push({
+          region: r.region, lat: r.lat, lon: r.lon, fo: r.fo,
+          mnn: drug.mnn, tn: drug.tn, profile: drug.profile, icd: drug.icd, price: drug.price,
+          month, season, supplier, incidence,
+          p_deficit: p, e_events: eEvents, hr, posterior,
+          p_exceed_1: pExceed1, p_exceed_2: pExceed2, p_exceed_3: pExceed3,
+          status, ksg_deviation: ksg,
+        });
+      }
+    });
+  });
+  return rows;
+}
+
+const PANEL = buildPanel();
+
+// ============================================================
+// STATE
+// ============================================================
+let state = {
+  page: 'map',
+  region: REGIONS_COORDS[0].region,
+  profile: 'неврология',
+  drug: 'сульпирид',
+  period: 6,
+  growth: 0,
+};
+
+// ============================================================
+// HELPERS
+// ============================================================
+function fmt(n, decimals = 3) {
+  return Number(n).toFixed(decimals);
+}
+function fmtPct(n, decimals = 1) {
+  return (n * 100).toFixed(decimals) + '%';
+}
+function fmtRub(n) {
+  return new Intl.NumberFormat('ru-RU').format(Math.round(n)) + ' ₽';
+}
+function statusTag(status) {
+  const cls = status.startsWith('Красный') ? 'tag-red' :
+              status.startsWith('Жёлтый') ? 'tag-yellow' : 'tag-green';
+  return `<span class="tag ${cls}">${status}</span>`;
+}
+function renderTable(containerId, columns, rows) {
+  const html = `<table><thead><tr>${columns.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${columns.map(c => `<td>${typeof c.render === 'function' ? c.render(r) : r[c.key]}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  document.getElementById(containerId).innerHTML = html;
+}
+function renderMetricCards(containerId, cards) {
+  const html = cards.map(c => `
+    <div class="metric-card">
+      <div class="metric-label">${c.label}</div>
+      <div class="metric-value" style="${c.color ? 'color: ' + c.color : ''}">${c.value}</div>
+    </div>`).join('');
+  document.getElementById(containerId).innerHTML = html;
+}
+
+// ============================================================
+// PAGE: MAP
+// ============================================================
+function renderMap() {
+  const filtered = PANEL.filter(r => r.mnn === state.drug);
+  const unique = {};
+  filtered.forEach(r => {
+    if (!unique[r.region]) unique[r.region] = r;
+  });
+  const data = Object.values(unique);
+
+  // Stats
+  const red = data.filter(d => d.status.startsWith('Красный')).length;
+  const yellow = data.filter(d => d.status.startsWith('Жёлтый')).length;
+  const green = data.filter(d => d.status.startsWith('Зелёный')).length;
+  const avgP = data.reduce((s, d) => s + d.p_deficit, 0) / data.length;
+
+  renderMetricCards('map-stats', [
+    { label: 'Всего регионов', value: data.length },
+    { label: 'Красный', value: red, color: '#EF4444' },
+    { label: 'Жёлтый', value: yellow, color: '#F59E0B' },
+    { label: 'Средняя P', value: fmtPct(avgP), color: '#00838F' },
+  ]);
+
+  // Plot
+  const colorMap = { 'Красный (аномалия)': '#EF4444', 'Жёлтый (риск)': '#F59E0B', 'Зелёный (норма)': '#10B981' };
+  const plotData = [{
+    type: 'scattermapbox',
+    mode: 'markers',
+    lat: data.map(d => d.lat),
+    lon: data.map(d => d.lon),
+    text: data.map(d => `<b>${d.region}</b><br>P=${fmtPct(d.p_deficit)}<br>E=${fmt(d.e_events, 2)}<br>HR=${fmt(d.hr)}<br>${d.status}`),
+    hovertemplate: '%{text}<extra></extra>',
+    marker: {
+      color: data.map(d => colorMap[d.status]),
+      size: data.map(d => Math.max(8, d.p_deficit * 20)),
+      opacity: 0.8,
+    },
+  }];
+  const layout = {
+    autosize: true, hovermode: 'closest',
+    mapbox: { style: 'carto-positron', zoom: 2.5, center: { lat: 60, lon: 90 } },
+    margin: { r: 0, t: 0, l: 0, b: 0 }, height: 500, showlegend: false,
+  };
+  Plotly.newPlot('map-plot', plotData, layout, { displayModeBar: false, responsive: true });
+
+  // Top-15 table
+  const top15 = data.sort((a, b) => b.p_deficit - a.p_deficit).slice(0, 15);
+  renderTable('map-table', [
+    { label: '#', render: (_, i) => i + 1 },
+    { label: 'Регион', key: 'region' },
+    { label: 'Статус', render: r => statusTag(r.status) },
+    { label: 'P(дефицит)', render: r => `<b style="color: ${r.p_deficit > 0.5 ? '#EF4444' : r.p_deficit > 0.2 ? '#F59E0B' : '#10B981'}">${fmtPct(r.p_deficit)}</b>` },
+    { label: 'E[событий]', render: r => fmt(r.e_events, 2) },
+    { label: 'HR', render: r => fmt(r.hr) },
+    { label: 'Posterior', render: r => fmtPct(r.posterior) },
+    { label: 'P(y>2)', render: r => fmtPct(r.p_exceed_2) },
+  ], top15);
+}
+
+// ============================================================
+// PAGE: FORECAST
+// ============================================================
+function renderForecast() {
+  document.getElementById('forecast-title').textContent =
+    `P(дефицит) — ${state.region} × ${state.drug} (период: ${state.period} мес.)`;
+
+  const months = [];
+  for (let m = 1; m <= state.period; m++) months.push(`2027-${String(m).padStart(2, '0')}-01`);
+
+  const rows = PANEL.filter(r =>
+    r.region === state.region && r.mnn === state.drug
+  ).slice(0, state.period);
+
+  const baseForecast = rows.map(r => r.p_deficit);
+  const lower = rows.map(r => Math.max(0, r.p_deficit - 0.15));
+  const upper = rows.map(r => Math.min(1, r.p_deficit + 0.15));
+  const posterior = rows.map(r => r.posterior);
+  const scenario = baseForecast.map(p => p * (1 + state.growth / 100));
+
+  const traces = [
+    { x: months, y: upper, mode: 'lines', line: { width: 0 }, showlegend: false, hoverinfo: 'skip' },
+    { x: months, y: lower, mode: 'lines', line: { width: 0 }, fill: 'tonexty',
+      fillcolor: 'rgba(0,131,143,0.2)', name: '80% CI' },
+    { x: months, y: baseForecast, mode: 'lines+markers', name: 'Базовый прогноз',
+      line: { color: '#00838F', width: 3 } },
+    { x: months, y: posterior, mode: 'lines', name: 'Posterior (Bayesian)',
+      line: { color: '#F59E0B', dash: 'dash', width: 2 } },
+  ];
+  if (state.growth !== 0) {
+    traces.push({
+      x: months, y: scenario, mode: 'lines',
+      name: `Сценарий (${state.growth > 0 ? '+' : ''}${state.growth}%)`,
+      line: { color: '#EF4444', dash: 'dot' },
+    });
+  }
+  Plotly.newPlot('forecast-plot', traces, {
+    title: { text: `P(дефицит) — ${state.region} × ${state.drug}` },
+    xaxis: { title: 'Месяц' }, yaxis: { title: 'P(дефицит)', range: [0, 1], tickformat: '.0%' },
+    height: 450, legend: { orientation: 'h', y: -0.2 }, margin: { t: 60, b: 60 },
+  }, { responsive: true });
+
+  // Metrics
+  renderMetricCards('forecast-metrics', [
+    { label: 'ROC-AUC', value: fmt(MODEL_METRICS.roc_auc) },
+    { label: 'PR-AUC', value: fmt(MODEL_METRICS.pr_auc) },
+    { label: 'Brier', value: fmt(MODEL_METRICS.brier, 4) },
+    { label: 'C-индекс', value: fmt(MODEL_METRICS.cox_c_index) },
+    { label: 'Calib err', value: fmt(MODEL_METRICS.calibration_error, 4) },
+  ]);
+
+  // Table
+  renderTable('forecast-table', [
+    { label: 'Месяц', render: r => r.month + ' мес.' },
+    { label: 'Сезон', key: 'season' },
+    { label: 'P(дефицит)', render: r => `<b>${fmtPct(r.p_deficit)}</b>` },
+    { label: 'E[событий]', render: r => fmt(r.e_events, 2) },
+    { label: 'HR', render: r => fmt(r.hr) },
+    { label: 'Posterior', render: r => fmtPct(r.posterior) },
+    { label: 'P(y>2)', render: r => fmtPct(r.p_exceed_2) },
+    { label: 'P(y>3)', render: r => fmtPct(r.p_exceed_3) },
+  ], rows);
+}
+
+// ============================================================
+// PAGE: TCoC
+// ============================================================
+function renderTCoC() {
+  const profileDrugs = DRUGS.filter(d => d.profile === state.profile);
+  if (profileDrugs.length < 2) {
+    document.getElementById('tcoc-plot').innerHTML = `<div class="text-gray-500 p-4">Недостаточно препаратов в профиле "${state.profile}"</div>`;
+    return;
+  }
+
+  const schemes = profileDrugs.map(d => {
+    const drugCost = d.price * 6 * (1 + rand() * 2);
+    const analyses = 3000 + rand() * 27000;
+    const visits = 2000 + rand() * 18000;
+    const logistics = 800 + rand() * 3200;
+    return {
+      ...d,
+      drug_6mo: drugCost, analyses_6mo: analyses,
+      visits_6mo: visits, logistics_6mo: logistics,
+      total: drugCost + analyses + visits + logistics,
+    };
+  }).sort((a, b) => a.total - b.total);
+
+  // Plot
+  const traces = ['drug_6mo', 'analyses_6mo', 'visits_6mo', 'logistics_6mo'].map((key, i) => ({
+    type: 'bar',
+    name: ['Препарат', 'Анализы', 'Визиты', 'Логистика'][i],
+    x: schemes.map(s => s.tn),
+    y: schemes.map(s => s[key]),
+    marker: { color: ['#00838F', '#00ACC1', '#4DD0E1', '#B2EBF2'][i] },
+  }));
+  Plotly.newPlot('tcoc-plot', traces, {
+    title: { text: `Структура стоимости (6 мес., профиль: ${state.profile})` },
+    barmode: 'stack', yaxis: { title: '₽ на 1 пациента' },
+    height: 450, legend: { orientation: 'h', y: -0.2 }, margin: { t: 60, b: 60 },
+  }, { responsive: true });
+
+  // Table
+  renderTable('tcoc-table', [
+    { label: 'Препарат', key: 'tn' },
+    { label: 'МНН', key: 'mnn' },
+    { label: 'МКБ-10', key: 'icd' },
+    { label: 'Препарат ₽', render: r => fmtRub(r.drug_6mo) },
+    { label: 'Анализы ₽', render: r => fmtRub(r.analyses_6mo) },
+    { label: 'Визиты ₽', render: r => fmtRub(r.visits_6mo) },
+    { label: 'Логистика ₽', render: r => fmtRub(r.logistics_6mo) },
+    { label: 'ИТОГО', render: r => `<b>${fmtRub(r.total)}</b>` },
+  ], schemes);
+
+  // Conclusion
+  if (schemes.length >= 2) {
+    const cheapest = schemes[0], expensive = schemes[schemes.length - 1];
+    const savings = (1 - cheapest.total / expensive.total) * 100;
+    document.getElementById('tcoc-conclusion').innerHTML = `
+      <div class="p-3 bg-emerald-50 rounded border-l-4 border-emerald-600">
+        💡 Схема <b>${cheapest.tn}</b> (${cheapest.mnn}) экономически эффективнее
+        <b>${expensive.tn}</b> на <b>${savings.toFixed(1)}%</b> за 6 мес. терапии на 1 пациента.
+      </div>`;
+  }
+}
+
+// ============================================================
+// PAGE: AUDIT
+// ============================================================
+function renderAudit() {
+  const auditData = PANEL.filter((r, i, arr) =>
+    arr.findIndex(x => x.region === r.region && x.tn === r.tn) === i
+  ).map(r => ({
+    ...r,
+    reason: r.ksg_deviation > 20 ? `Превышение КСГ на ${r.ksg_deviation.toFixed(0)}%` :
+            r.p_deficit > 0.4 ? `P=${r.p_deficit.toFixed(2)}` : '—'
+  })).sort((a, b) => b.p_deficit - a.p_deficit).slice(0, 30);
+
+  const red = auditData.filter(d => d.status.startsWith('Красный')).length;
+  const yellow = auditData.filter(d => d.status.startsWith('Жёлтый')).length;
+  const green = auditData.filter(d => d.status.startsWith('Зелёный')).length;
+
+  renderMetricCards('audit-stats', [
+    { label: 'Всего', value: auditData.length },
+    { label: 'Красный', value: red, color: '#EF4444' },
+    { label: 'Жёлтый', value: yellow, color: '#F59E0B' },
+    { label: 'Зелёный', value: green, color: '#10B981' },
+  ]);
+
+  renderTable('audit-table', [
+    { label: 'Регион', key: 'region' },
+    { label: 'Препарат', key: 'tn' },
+    { label: 'Профиль', key: 'profile' },
+    { label: 'Статус', render: r => statusTag(r.status) },
+    { label: 'Отклонение КСГ', render: r => `${r.ksg_deviation > 0 ? '+' : ''}${r.ksg_deviation.toFixed(0)}%` },
+    { label: 'P(дефицит)', render: r => `<b>${fmtPct(r.p_deficit)}</b>` },
+    { label: 'E[событий]', render: r => fmt(r.e_events, 2) },
+    { label: 'HR', render: r => fmt(r.hr) },
+    { label: 'Причина', key: 'reason' },
+  ], auditData);
+}
+
+function exportCSV() {
+  const rows = PANEL.slice(0, 100);
+  const headers = ['Регион', 'Препарат', 'Профиль', 'Статус', 'P_дефицит', 'E_событий', 'HR'];
+  const csv = [headers.join(','),
+    ...rows.map(r => [r.region, r.tn, r.profile, r.status, r.p_deficit.toFixed(3),
+                       r.e_events.toFixed(2), r.hr.toFixed(3)].join(','))
+  ].join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'audit.csv'; a.click();
+  URL.revokeObjectURL(url);
+}
+function exportExcel() {
+  // Простой Excel-экспорт через HTML таблицу (открывается в Excel)
+  const rows = PANEL.slice(0, 100);
+  const html = `<table><thead><tr>
+    <th>Регион</th><th>Препарат</th><th>Профиль</th><th>Статус</th>
+    <th>P_дефицит</th><th>E_событий</th><th>HR</th>
+  </tr></thead><tbody>${rows.map(r => `<tr>
+    <td>${r.region}</td><td>${r.tn}</td><td>${r.profile}</td><td>${r.status}</td>
+    <td>${r.p_deficit.toFixed(3)}</td><td>${r.e_events.toFixed(2)}</td><td>${r.hr.toFixed(3)}</td>
+  </tr>`).join('')}</tbody></table>`;
+  const blob = new Blob(['<html><head><meta charset="UTF-8"></head><body>' + html + '</body></html>'],
+    { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'audit.xls'; a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+// PAGE: MODELS
+// ============================================================
+function renderModels() {
+  renderMetricCards('models-cards', [
+    { label: 'Модель 1', value: 'Logistic + Platt', color: '#00838F' },
+    { label: 'Модель 2', value: 'Poisson', color: '#00838F' },
+    { label: 'Модель 3', value: 'Negative Binomial', color: '#00838F' },
+    { label: 'Модель 4', value: 'Cox PH', color: '#00838F' },
+  ]);
+
+  renderTable('models-metrics-table', [
+    { label: 'Метрика', key: 'name' },
+    { label: 'Значение', key: 'value' },
+  ], [
+    { name: 'ROC-AUC (Logistic)', value: fmt(MODEL_METRICS.roc_auc) },
+    { name: 'PR-AUC', value: fmt(MODEL_METRICS.pr_auc) },
+    { name: 'Brier score', value: fmt(MODEL_METRICS.brier, 4) },
+    { name: 'Log-loss', value: fmt(MODEL_METRICS.log_loss, 4) },
+    { name: 'Poisson deviance', value: fmt(MODEL_METRICS.poisson_deviance, 4) },
+    { name: 'MAE (событий/мес)', value: fmt(MODEL_METRICS.poisson_mae, 3) },
+    { name: 'C-индекс (Cox)', value: fmt(MODEL_METRICS.cox_c_index) },
+    { name: 'Calibration error', value: fmt(MODEL_METRICS.calibration_error, 4) },
+    { name: 'N наблюдений', value: '12 960' },
+    { name: 'N признаков', value: '17' },
+  ]);
+
+  renderTable('models-cox-table', [
+    { label: 'Фактор', key: 'factor' },
+    { label: 'Coef', render: r => fmt(r.coef, 3) },
+    { label: 'HR', render: r => fmt(r.hr, 3) },
+    { label: 'p-value', key: 'p' },
+  ], [
+    { factor: 'x1 плотность обращений ЛЛО', coef: 0.319, hr: 1.375, p: '0.0000' },
+    { factor: 'x3 повторные обращения', coef: 0.107, hr: 1.112, p: '0.0000' },
+    { factor: 'profile_онкология', coef: 0.084, hr: 1.088, p: '0.0001' },
+    { factor: 'x4 нарушения сроков', coef: -0.076, hr: 0.927, p: '0.0000' },
+    { factor: 'price (стоимость)', coef: 0.071, hr: 1.074, p: '0.0009' },
+  ]);
+}
+
+// ============================================================
+// PAGE: CALIBRATION
+// ============================================================
+function renderCalibration() {
+  // Bayesian update
+  const prior = 0.321;
+  const signals = [
+    { name: 'Prior', lr: null },
+    { name: '+ Высокая заболеваемость', lr: 0.86 },
+    { name: '+ Зимний сезон', lr: 1.24 },
+    { name: '+ Дорогой препарат (>5К₽)', lr: 1.62 },
+    { name: '+ Прямой контракт', lr: 1.07 },
+  ];
+  let currentP = prior;
+  const steps = [{ name: 'Prior', p: prior, lr: '—' }];
+  signals.slice(1).forEach(s => {
+    const newP = (s.lr * currentP) / (s.lr * currentP + (1 - currentP));
+    steps.push({ name: s.name, p: newP, lr: s.lr.toFixed(2) });
+    currentP = newP;
+  });
+
+  renderTable('calibration-bayesian-table', [
+    { label: 'Шаг', key: 'name' },
+    { label: 'P(дефицит)', render: r => `<b>${fmtPct(r.p)}</b>` },
+    { label: 'LR', key: 'lr' },
+  ], steps);
+
+  // Bayesian plot
+  Plotly.newPlot('calibration-bayesian-plot', [{
+    x: steps.map((_, i) => i),
+    y: steps.map(s => s.p),
+    mode: 'lines+markers+text',
+    text: steps.map(s => (s.p * 100).toFixed(1) + '%'),
+    textposition: 'top-center',
+    line: { color: '#00838F', width: 3 },
+    marker: { size: 10 },
+  }], {
+    title: { text: 'Bayesian Sequential Update: 32.1% → 46.8% (×1.46)' },
+    xaxis: { title: 'Шаг', tickvals: steps.map((_, i) => i), ticktext: steps.map(s => s.name) },
+    yaxis: { title: 'P(дефицит)', range: [0, 0.6], tickformat: '.0%' },
+    height: 400, margin: { t: 60, b: 100 },
+  }, { responsive: true });
+
+  // Reliability diagram (mock)
+  const probPred = [0.107, 0.120, 0.183, 0.192, 0.248, 0.292, 0.338, 0.394, 0.526, 0.750];
+  const probTrue = [0.119, 0.158, 0.189, 0.219, 0.254, 0.291, 0.334, 0.393, 0.487, 0.763];
+  Plotly.newPlot('calibration-reliability-plot', [
+    { x: [0, 1], y: [0, 1], mode: 'lines', line: { dash: 'dash', color: 'gray' }, name: 'Идеальная' },
+    { x: probPred, y: probTrue, mode: 'lines+markers', line: { color: '#00838F', width: 3 }, name: 'Logistic + Platt' },
+  ], {
+    title: { text: 'Reliability Diagram (10 децилей)' },
+    xaxis: { title: 'Predicted probability' },
+    yaxis: { title: 'Actual frequency' },
+    height: 400, legend: { orientation: 'h', y: -0.2 }, margin: { t: 60, b: 60 },
+  }, { responsive: true });
+
+  // Exceedance
+  renderTable('calibration-exceed-table', [
+    { label: 'Порог', key: 'threshold' },
+    { label: 'Среднее P', render: r => fmt(r.avg, 3) },
+    { label: 'Макс P', render: r => fmt(r.max, 3) },
+  ], [
+    { threshold: 1, avg: 0.088, max: 0.464 },
+    { threshold: 2, avg: 0.016, max: 0.208 },
+    { threshold: 3, avg: 0.003, max: 0.074 },
+    { threshold: 5, avg: 0.000, max: 0.005 },
+  ]);
+}
+
+// ============================================================
+// ROUTER
+// ============================================================
+function navigate(page) {
+  state.page = page;
+  document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.sidebar-item[data-page="${page}"]`).classList.add('active');
+  document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+
+  if (page === 'map') renderMap();
+  else if (page === 'forecast') renderForecast();
+  else if (page === 'tcoc') renderTCoC();
+  else if (page === 'audit') renderAudit();
+  else if (page === 'models') renderModels();
+  else if (page === 'calibration') renderCalibration();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function initFilters() {
+  // Regions
+  const regions = [...new Set(REGIONS_COORDS.map(r => r.region))].sort();
+  const regionSelect = document.getElementById('region-select');
+  regions.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r; opt.textContent = r;
+    if (r === state.region) opt.selected = true;
+    regionSelect.appendChild(opt);
+  });
+  regionSelect.onchange = e => { state.region = e.target.value; if (state.page === 'forecast') renderForecast(); };
+
+  // Profiles
+  const profiles = [...new Set(DRUGS.map(d => d.profile))].sort();
+  const profileSelect = document.getElementById('profile-select');
+  profiles.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p; opt.textContent = p;
+    if (p === state.profile) opt.selected = true;
+    profileSelect.appendChild(opt);
+  });
+  profileSelect.onchange = e => {
+    state.profile = e.target.value;
+    updateDrugOptions();
+    if (state.page === 'tcoc') renderTCoC();
+    if (state.page === 'map') renderMap();
+    if (state.page === 'forecast') renderForecast();
+  };
+
+  updateDrugOptions();
+  document.getElementById('drug-select').onchange = e => {
+    state.drug = e.target.value;
+    if (state.page === 'map') renderMap();
+    if (state.page === 'forecast') renderForecast();
+  };
+
+  // Period
+  const periodSlider = document.getElementById('period-slider');
+  periodSlider.oninput = e => {
+    state.period = parseInt(e.target.value);
+    document.getElementById('period-value').textContent = state.period;
+    if (state.page === 'forecast') renderForecast();
+  };
+
+  // Growth slider
+  const growthSlider = document.getElementById('growth-slider');
+  growthSlider.oninput = e => {
+    state.growth = parseInt(e.target.value);
+    document.getElementById('growth-value').textContent = state.growth > 0 ? '+' + state.growth : state.growth;
+    if (state.page === 'forecast') renderForecast();
+  };
+}
+
+function updateDrugOptions() {
+  const drugs = DRUGS.filter(d => d.profile === state.profile);
+  const drugSelect = document.getElementById('drug-select');
+  drugSelect.innerHTML = '';
+  drugs.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.mnn; opt.textContent = `${d.tn} (${d.mnn})`;
+    drugSelect.appendChild(opt);
+  });
+  state.drug = drugs[0]?.mnn || 'сульпирид';
+}
+
+// Sidebar navigation
+document.querySelectorAll('.sidebar-item').forEach(el => {
+  el.addEventListener('click', () => navigate(el.dataset.page));
+});
+
+// Initialize
+initFilters();
+navigate('map');
+</script>
+
+</body>
+</html>
